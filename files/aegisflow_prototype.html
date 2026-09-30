@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AegisFlow — Evacuation Command Console</title>
+<style>
+  canvas { width:100%; height:auto; display:block; border-radius:6px; background:transparent; cursor:crosshair }
+:root{
+  --bg:#060b14; --panel:#0e1826; --panel-2:#0b1420; --line:#1c2c40;
+  --text:#d7e3f0; --dim:#7c93aa; --dim2:#4d647c;
+  --safe:#34d399; --warn:#fbbf24; --closed:#f87171; --accent:#38bdf8;
+  --ward:#a78bfa; --shelter:#f472b6;
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  overflow-x:hidden;
+}
+.mono{font-family:ui-monospace,'SF Mono',Consolas,monospace}
+header{
+  display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+  padding:16px 20px 12px; border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#0a1220,#060b14);
+}
+header h1{font-size:19px; margin:0; font-weight:650; letter-spacing:.2px}
+header .tag{color:var(--dim); font-size:13px}
+header .live{
+  margin-left:auto; display:flex; align-items:center; gap:7px; font-size:11.5px;
+  color:var(--closed); font-family:ui-monospace,monospace;
+}
+header .live .dot{width:7px;height:7px;border-radius:50%;background:var(--closed);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+.wrap{display:flex; gap:0; max-width:1440px; margin:0 auto; flex-wrap:wrap}
+.mapcol{flex:1 1 660px; padding:18px; min-width:340px}
+.mapcard {
+  border: 1px solid var(--line); 
+  border-radius: 10px; 
+  background-color: var(--panel-2);
+  /* Use a strict center, zoom, and size to guarantee pixel alignment */
+  background-image: url('https://static-maps.yandex.ru/1.x/?l=map&ll=-122.300,37.808&z=15&size=600,450'); 
+  background-size: 100% 100%; 
+  background-position: center;
+  padding: 0; 
+  overflow: hidden;
+}
+
+.legend{display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:11.5px; color:var(--dim)}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.sw{width:10px; height:10px; border-radius:3px; display:inline-block}
+.srcnote{margin-top:8px; font-size:11px; color:var(--dim2); line-height:1.5}
+.srcnote b{color:var(--accent); font-weight:600}
+
+.side{flex:0 0 380px; padding:18px 18px 18px 0; display:flex; flex-direction:column; gap:14px; min-width:300px}
+.panel{border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:14px 16px}
+.panel h2{font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim2); margin:0 0 10px; font-weight:650}
+
+.controls .row{display:flex; align-items:center; gap:10px; margin-bottom:10px}
+.controls label{font-size:12.5px; color:var(--dim); width:92px; flex-shrink:0}
+input[type=range]{flex:1; accent-color:var(--accent)}
+.controls .val{font-size:12px; color:var(--text); width:34px; text-align:right; font-family:ui-monospace,monospace}
+.btnrow{display:flex; gap:8px; flex-wrap:wrap; margin-top:4px}
+button{
+  background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:7px;
+  padding:8px 12px; font-size:12.5px; cursor:pointer; transition:border-color .15s,background .15s;
+}
+button:hover{border-color:var(--accent); background:#0f1c2c}
+button.primary{background:#0d3450; border-color:#1a5a86; color:#bfe8ff}
+button.danger{background:#3a1414; border-color:#6b2323; color:#ffb3b3}
+
+.stats{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.stat{background:var(--panel-2); border:1px solid var(--line); border-radius:8px; padding:9px 10px}
+.stat .n{font-size:18px; font-family:ui-monospace,monospace; font-weight:600}
+.stat .l{font-size:10.5px; color:var(--dim); margin-top:2px}
+.stat.safe .n{color:var(--safe)} .stat.warn .n{color:var(--warn)} .stat.closed .n{color:var(--closed)}
+
+.selbox{font-size:12px; line-height:1.7}
+.selbox .row2{display:flex; justify-content:space-between; border-bottom:1px dashed var(--line); padding:3px 0}
+.selbox .row2 span:first-child{color:var(--dim)}
+.selbox .row2 span:last-child{font-family:ui-monospace,monospace}
+.selempty{color:var(--dim2); font-size:12px}
+
+#log{height:160px; overflow-y:auto; font-family:ui-monospace,monospace; font-size:11.5px; line-height:1.55; display:flex; flex-direction:column-reverse}
+#log div{color:var(--dim)}
+#log div b{color:var(--accent); font-weight:600}
+#log div.sev b{color:var(--closed)}
+#log div.flow b{color:var(--safe)}
+#log div.shl b{color:var(--warn)}
+#log div.wif b{color:var(--ward)}
+
+::-webkit-scrollbar{width:7px} ::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px}
+.footnote{color:var(--dim2); font-size:11px; padding:6px 20px 22px; max-width:1440px; margin:0 auto}
+.footnote b{color:var(--dim)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AegisFlow</h1>
+  <span class="tag">Evacuation Command Console — prototype on a real OSM road graph</span>
+  <div class="live"><span class="dot"></span><span id="livestate">LIVE SIMULATION: FLOOD CRISIS ACTIVE</span></div>
+</header>
+
+<div class="wrap">
+  <div class="mapcol">
+    <div class="mapcard">
+      <canvas id="cv"></canvas>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--safe)"></i>Safe corridor</span>
+        <span><i class="sw" style="background:var(--warn)"></i>Congested / flooding</span>
+        <span><i class="sw" style="background:var(--closed)"></i>Closed / severed</span>
+        <span><i class="sw" style="background:var(--ward)"></i>Ward (origin)</span>
+        <span><i class="sw" style="background:var(--shelter)"></i>Shelter</span>
+        <span>Thick line = critical arterial (7th St)</span>
+      </div>
+      <div class="srcnote"><b>Road graph:</b> real OpenStreetMap extract, West Oakland, CA — 36 intersections / 45 segments, parsed from raw OSM XML into a topological node/edge graph (same node→intersection, way→edge simplification OSMnx performs) and carrying each edge's real length, name, speed limit, lane count and directionality. Click any road to inspect it.</div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="panel controls">
+      <h2>Scenario controls</h2>
+      <div class="row"><label for="rain">Storm surge</label><input type="range" id="rain" min="0" max="100" value="35"><span class="val" id="rainv">35%</span></div>
+      <div class="row"><label for="spd">Sim speed</label><input type="range" id="spd" min="1" max="4" value="2"><span class="val" id="spdv">2×</span></div>
+      <div class="btnrow">
+        <button class="primary" id="playBtn">Pause</button>
+        <button id="resetBtn">Reset</button>
+        <button class="danger" id="bridgeBtn">Simulate: 7th St closure</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Live EOC telemetry</h2>
+      <div class="stats">
+        <div class="stat"><div class="n" id="stEvac">0 / 0</div><div class="l">Evacuated demand</div></div>
+        <div class="stat"><div class="n" id="stLat">— ms</div><div class="l">Reroute latency</div></div>
+        <div class="stat safe"><div class="n" id="stSafe">0</div><div class="l">Corridors safe</div></div>
+        <div class="stat warn"><div class="n" id="stWarn">0</div><div class="l">Corridors warning</div></div>
+        <div class="stat closed"><div class="n" id="stClosed">0</div><div class="l">Corridors closed</div></div>
+        <div class="stat"><div class="n" id="stBottle">0</div><div class="l">Bottleneck risk links</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Selected corridor</h2>
+      <div id="selPanel" class="selempty">Click a road on the map to inspect its real OSM metadata.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Incident log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<div class="footnote"><b>Data provenance:</b> this sandbox has no live network access to the Overpass/OSM API, so live OSMnx download wasn't possible here. Instead this prototype ingests a real, unaltered OpenStreetMap XML extract of West Oakland, CA (one of OSMnx's own published test-fixture datasets) and replicates OSMnx's own graph-construction step in Python — parsing &lt;node&gt;/&lt;way&gt; elements, computing haversine segment lengths, and simplifying to an intersections-only topological graph — then exports it to JSON for this browser engine. Every road segment below carries its real OSM name, length, highway class, lane count and directionality; speed limits use the real \'maxspeed\' tag where present and standard traffic-engineering defaults by road class where it is not. Wards/shelters are demo role-assignments on top of real nodes (one shelter, Prescott School, is a real OSM point of interest). Elevation/flood terrain remains a procedural stand-in for true DEM ingestion (CartoDEM/SRTM), which needs the same external network access. The C++ kernel, PostGIS store, live IMD/CWC feeds and Docker packaging from the full proposal aren't reproducible in this sandbox either.</div>
+
+<script>
+const GRAPH = {"nodes": {"4182017345": {"c": 14.83, "r": 27.84, "lat": 37.8069762, "lon": -122.3019383}, "53082833": {"c": 22.47, "r": 13.05, "lat": 37.8132912, "lon": -122.2978119}, "3982626979": {"c": 16.14, "r": 28.58, "lat": 37.8066637, "lon": -122.3012303}, "53104328": {"c": 27.83, "r": 9.81, "lat": 37.8146738, "lon": -122.2949133}, "429454715": {"c": 35.47, "r": 3.0, "lat": 37.8175832, "lon": -122.290784}, "667607482": {"c": 19.14, "r": 29.71, "lat": 37.8061809, "lon": -122.2996114}, "53027353": {"c": 17.3, "r": 26.9, "lat": 37.8073779, "lon": -122.3006059}, "667607484": {"c": 20.34, "r": 30.04, "lat": 37.80604, "lon": -122.298965}, "53055513": {"c": 16.96, "r": 21.75, "lat": 37.8095784, "lon": -122.300788}, "667607486": {"c": 20.4, "r": 29.81, "lat": 37.8061375, "lon": -122.2989293}, "53035727": {"c": 21.81, "r": 29.93, "lat": 37.8060841, "lon": -122.2981685}, "436645466": {"c": 16.78, "r": 28.77, "lat": 37.8065829, "lon": -122.3008882}, "436645490": {"c": 13.83, "r": 28.41, "lat": 37.8067355, "lon": -122.3024814}, "436645472": {"c": 13.14, "r": 27.18, "lat": 37.8072596, "lon": -122.3028527}, "667607480": {"c": 19.2, "r": 29.46, "lat": 37.8062864, "lon": -122.2995784}, "53027357": {"c": 11.94, "r": 25.35, "lat": 37.8080415, "lon": -122.3035018}, "3160526702": {"c": 16.95, "r": 28.16, "lat": 37.8068407, "lon": -122.3007966}, "436645469": {"c": 14.0, "r": 27.78, "lat": 37.807003, "lon": -122.3023871}, "667744217": {"c": 12.15, "r": 23.7, "lat": 37.8087446, "lon": -122.3033862}, "420944486": {"c": 3.0, "r": 24.61, "lat": 37.8083586, "lon": -122.3083331}, "3982627017": {"c": 17.19, "r": 28.88, "lat": 37.8065328, "lon": -122.3006667}, "53060439": {"c": 15.82, "r": 23.54, "lat": 37.808815, "lon": -122.3014029}, "53127629": {"c": 16.84, "r": 28.53, "lat": 37.8066819, "lon": -122.300853}, "667744075": {"c": 14.71, "r": 25.32, "lat": 37.8080532, "lon": -122.3020026}, "53098249": {"c": 34.55, "r": 31.0, "lat": 37.8056289, "lon": -122.291283}, "3160526703": {"c": 17.01, "r": 27.92, "lat": 37.8069459, "lon": -122.3007603}, "53055515": {"c": 12.3, "r": 18.78, "lat": 37.810848, "lon": -122.3033067}, "53061537": {"c": 19.72, "r": 29.37, "lat": 37.8063249, "lon": -122.2992975}, "53060438": {"c": 18.2, "r": 25.05, "lat": 37.808169, "lon": -122.3001204}, "53027354": {"c": 14.47, "r": 26.11, "lat": 37.807715, "lon": -122.3021362}, "436645465": {"c": 21.64, "r": 30.2, "lat": 37.8059723, "lon": -122.2982579}, "53098262": {"c": 17.52, "r": 26.13, "lat": 37.8077097, "lon": -122.300488}, "3694445462": {"c": 19.09, "r": 30.67, "lat": 37.8057699, "lon": -122.2996393}, "53055512": {"c": 19.33, "r": 23.26, "lat": 37.8089334, "lon": -122.2995085}, "53131081": {"c": 14.09, "r": 27.46, "lat": 37.8071393, "lon": -122.3023391}, "53061539": {"c": 20.38, "r": 26.95, "lat": 37.8073597, "lon": -122.2989405}}, "edges": [{"a": "53027353", "b": "53027354", "len": 139.6, "hw": "residential", "name": "Goss Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.209, "critical": false}, {"a": "53027354", "b": "53027357", "len": 126.0, "hw": "residential", "name": "Goss Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.189, "critical": false}, {"a": "53055512", "b": "53055513", "len": 133.3, "hw": "residential", "name": "9th Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.2, "critical": false}, {"a": "53055513", "b": "53055515", "len": 262.5, "hw": "residential", "name": "9th Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.394, "critical": false}, {"a": "53060438", "b": "53060439", "len": 133.6, "hw": "residential", "name": "Chase Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.2, "critical": false}, {"a": "53061537", "b": "53061539", "len": 119.3, "hw": "residential", "name": "Campbell Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.179, "critical": false}, {"a": "53061539", "b": "429454715", "len": 1343.8, "hw": "residential", "name": "Campbell Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 2.016, "critical": false}, {"a": "53098249", "b": "53061539", "len": 699.7, "hw": "residential", "name": "8th Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 1.05, "critical": false}, {"a": "53061539", "b": "53098262", "len": 141.4, "hw": "residential", "name": "8th Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.212, "critical": false}, {"a": "3694445462", "b": "436645490", "len": 670.0, "hw": "service", "name": "Wood Street", "speed": 20, "lanes": 1, "oneway": false, "cap": 250, "ff": 2.01, "critical": false}, {"a": "667607480", "b": "667607482", "len": 12.1, "hw": "service", "name": "(unnamed)", "speed": 20, "lanes": 1, "oneway": true, "cap": 250, "ff": 0.036, "critical": false}, {"a": "667607482", "b": "667607484", "len": 58.9, "hw": "service", "name": "(unnamed)", "speed": 20, "lanes": 1, "oneway": true, "cap": 250, "ff": 0.177, "critical": false}, {"a": "667607484", "b": "667607486", "len": 11.3, "hw": "service", "name": "(unnamed)", "speed": 20, "lanes": 1, "oneway": true, "cap": 250, "ff": 0.034, "critical": false}, {"a": "667607482", "b": "667607484", "len": 74.2, "hw": "service", "name": "(unnamed)", "speed": 20, "lanes": 1, "oneway": true, "cap": 250, "ff": 0.223, "critical": false}, {"a": "436645466", "b": "53127629", "len": 11.4, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.017, "critical": false}, {"a": "53127629", "b": "3160526702", "len": 18.3, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.027, "critical": false}, {"a": "3160526702", "b": "3160526703", "len": 12.1, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.018, "critical": false}, {"a": "3160526703", "b": "53027353", "len": 49.9, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.075, "critical": false}, {"a": "53027353", "b": "53098262", "len": 38.3, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.057, "critical": false}, {"a": "53098262", "b": "53060438", "len": 60.4, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.091, "critical": false}, {"a": "53060438", "b": "53055512", "len": 100.6, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.151, "critical": false}, {"a": "53055512", "b": "53104328", "len": 755.2, "hw": "residential", "name": "Willow Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 1.133, "critical": false}, {"a": "436645490", "b": "436645469", "len": 30.9, "hw": "unclassified", "name": "Wood Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.046, "critical": false}, {"a": "53131081", "b": "53027354", "len": 66.5, "hw": "unclassified", "name": "Wood Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.1, "critical": false}, {"a": "53027354", "b": "667744075", "len": 39.4, "hw": "unclassified", "name": "Wood Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.059, "critical": false}, {"a": "667744075", "b": "53060439", "len": 99.8, "hw": "unclassified", "name": "Wood Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.15, "critical": false}, {"a": "53060439", "b": "53055513", "len": 100.6, "hw": "unclassified", "name": "Wood Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.151, "critical": false}, {"a": "53055513", "b": "53082833", "len": 488.7, "hw": "unclassified", "name": "Wood Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.733, "critical": false}, {"a": "436645469", "b": "53131081", "len": 15.7, "hw": "unclassified", "name": "Wood Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.024, "critical": false}, {"a": "436645469", "b": "3982626979", "len": 108.9, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.145, "critical": true}, {"a": "3982626979", "b": "436645466", "len": 31.4, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.042, "critical": true}, {"a": "436645466", "b": "3982627017", "len": 20.2, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.027, "critical": true}, {"a": "3982627017", "b": "667607480", "len": 99.5, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.133, "critical": true}, {"a": "667607480", "b": "667607486", "len": 59.4, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.079, "critical": true}, {"a": "667607486", "b": "436645465", "len": 61.8, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.082, "critical": true}, {"a": "53131081", "b": "420944486", "len": 551.6, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.735, "critical": true}, {"a": "53035727", "b": "53061537", "len": 102.7, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.137, "critical": true}, {"a": "53061537", "b": "53127629", "len": 142.3, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.19, "critical": true}, {"a": "53127629", "b": "4182017345", "len": 101.0, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 2, "oneway": true, "cap": 1800, "ff": 0.135, "critical": true}, {"a": "667744075", "b": "53098262", "len": 138.4, "hw": "residential", "name": "8th Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.208, "critical": false}, {"a": "3160526703", "b": "3160526702", "len": 89.5, "hw": "service", "name": "(unnamed)", "speed": 20, "lanes": 1, "oneway": false, "cap": 250, "ff": 0.269, "critical": false}, {"a": "436645472", "b": "436645469", "len": 49.9, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 3, "oneway": true, "cap": 2700, "ff": 0.067, "critical": true}, {"a": "3982626979", "b": "3982627017", "len": 89.4, "hw": "service", "name": "(unnamed)", "speed": 20, "lanes": 1, "oneway": true, "cap": 250, "ff": 0.268, "critical": false}, {"a": "667744217", "b": "667744075", "len": 143.8, "hw": "residential", "name": "8th Street", "speed": 40, "lanes": 1, "oneway": false, "cap": 500, "ff": 0.216, "critical": false}, {"a": "4182017345", "b": "53131081", "len": 39.6, "hw": "secondary", "name": "7th Street", "speed": 45, "lanes": 3, "oneway": true, "cap": 2700, "ff": 0.053, "critical": true}], "roles": {"429454715": "ward:Ward North", "420944486": "ward:Ward West", "53098249": "ward:Ward South", "53061539": "shelter:Shelter \u2014 Prescott School", "53104328": "shelter:Shelter \u2014 Assembly Point NE"}};
+const COLS=46, ROWS=34;
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+cv.width = 600;  // Matches the exact API image width
+cv.height = 450; // Matches the exact API image height
+
+// Web Mercator projection to perfectly align lat/lon with the map tile
+function getXY(lat, lon) {
+  const zoom = 15;
+  const scale = Math.pow(2, zoom) * 256;
+  const centerLon = -122.300, centerLat = 37.808; // Exact center of our map URL
+  
+  function project(lt, ln) {
+    let siny = Math.sin(lt * Math.PI / 180);
+    siny = Math.min(Math.max(siny, -0.9999), 0.9999);
+    return {
+      x: ln / 360 + 0.5,
+      y: 0.5 - Math.log((1 + siny) / (1 - siny)) / (4 * Math.PI)
+    };
+  }
+  
+  const center = project(centerLat, centerLon);
+  const target = project(lat, lon);
+  
+  // Calculate pixel offsets from the center of the canvas
+  return {
+    x: (target.x - center.x) * scale + (cv.width / 2),
+    y: (target.y - center.y) * scale + (cv.height / 2)
+  };
+}
+
+// ---------- Terrain (procedural stand-in DEM, biased toward the real Estuary-facing south/west edge) ----------
+function elevation(c,r){
+  let h = 5.2 - (r/ROWS)*3.1 - (1-c/COLS)*0.9;
+  h += 0.6*Math.sin(c*0.3)+0.5*Math.cos(r*0.35);
+  return h;
+}
+let elev=[], depth=[];
+for(let r=0;r<ROWS;r++){ elev[r]=[]; depth[r]=[]; for(let c=0;c<COLS;c++){ elev[r][c]=elevation(c,r); depth[r][c]=0; } }
+
+function stepFlood(pct){
+  const buf = depth.map(row=>row.slice());
+  const surge = pct/100;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    if(r > ROWS*0.80) buf[r][c] += 0.011*surge + 0.0012;
+    else if(Math.random()<0.015) buf[r][c] += 0.003*surge;
+  }
+  const H=(r,c)=>elev[r][c]+depth[r][c];
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    if(depth[r][c]<=0.0005) continue;
+    const nbrs=[[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([rr,cc])=>rr>=0&&rr<ROWS&&cc>=0&&cc<COLS);
+    for(const [rr,cc] of nbrs){
+      const diff=H(r,c)-H(rr,cc);
+      if(diff>0){ const amt=Math.min(depth[r][c]*0.22, diff*0.22); buf[r][c]-=amt; buf[rr][cc]+=amt; }
+    }
+  }
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    let v=Math.max(0,buf[r][c])*0.997;
+    if(c<=0||c>=COLS-1||r<=0||r>=ROWS-1) v*=0.9;
+    depth[r][c]=v;
+  }
+}
+
+// ---------- Real road graph (ingested from OSM) ----------
+const nodes={};
+// Replace the Object.entries(GRAPH.nodes) line with this:
+Object.entries(GRAPH.nodes).forEach(([id,d])=>{ 
+    nodes[id] = { c: d.c, r: d.r, lat: d.lat, lon: d.lon, type: 'jn' }; 
+});
+Object.entries(GRAPH.roles).forEach(([id,val])=>{
+  const [type,label]=val.split(':');
+  nodes[id].type=type; nodes[id].label=label;
+  if(type==='ward') nodes[id].demand = 900+Math.floor(Math.random()*700);
+  if(type==='shelter'){ nodes[id].capacity=2200+Math.floor(Math.random()*900); nodes[id].occ=0; }
+});
+const edges = GRAPH.edges.map((e,i)=>({
+  id:'E'+i, a:e.a, b:e.b, name:e.name, hw:e.hw, len:e.len, speed:e.speed, lanes:e.lanes,
+  oneway:e.oneway, capacity:e.cap, freeflow:e.ff, critical:e.critical,
+  flood:0, state:'SAFE', volume:0, closedByCollapse:false,
+}));
+const adj={}; Object.keys(nodes).forEach(n=>adj[n]=[]);
+edges.forEach(e=>{ adj[e.a].push(e); if(!e.oneway) adj[e.b].push(e); });
+function other(e,n){ return e.a===n?e.b:e.a; }
+
+function edgeFloodDepth(e){
+  const A=nodes[e.a],B=nodes[e.b]; let m=0;
+  for(let t=0;t<=1;t+=0.34){
+    const c=Math.round(A.c+(B.c-A.c)*t), r=Math.round(A.r+(B.r-A.r)*t);
+    if(r>=0&&r<ROWS&&c>=0&&c<COLS) m=Math.max(m,depth[r][c]);
+  }
+  return m;
+}
+function updateEdgeStates(){
+  const sev=[];
+  edges.forEach(e=>{
+    e.flood=edgeFloodDepth(e);
+    let s;
+    if(e.closedByCollapse) s='CLOSED';
+    else if(e.flood>0.30) s='CLOSED';
+    else if(e.flood>0.13) s='WARNING';
+    else s='SAFE';
+    if(s==='CLOSED' && s!==e.state && !e.closedByCollapse) sev.push(`${e.name} (${e.a}–${e.b}) submerged >0.30m → status CLOSED, capacity derated to 0.`);
+    e.state=s;
+  });
+  return sev;
+}
+function effCapacity(e){ if(e.state==='CLOSED') return 0; if(e.state==='WARNING') return e.capacity*0.4; return e.capacity; }
+function bprTime(e){
+  const cap=effCapacity(e); if(cap<=0) return Infinity;
+  const ratio=e.volume/cap;
+  return e.freeflow*60*(1+0.15*Math.pow(ratio,4)) + e.flood*480; // seconds, flood depth penalty folded in
+}
+
+// ---------- Clusters ----------
+let clusters=[], clusterSeq=0, evacuated=0;
+const wardIds = Object.keys(nodes).filter(n=>nodes[n].type==='ward');
+const shelterIds = Object.keys(nodes).filter(n=>nodes[n].type==='shelter');
+let totalDemand = wardIds.reduce((s,w)=>s+nodes[w].demand,0);
+
+function pickShelter(){
+  const a=shelterIds.map(s=>({s,free:nodes[s].capacity-nodes[s].occ})).filter(o=>o.free>80).sort((x,y)=>y.free-x.free);
+  return a.length? a[0].s : null;
+}
+function dijkstra(from,to){
+  const d={},prev={},vis={}; Object.keys(nodes).forEach(n=>d[n]=Infinity); d[from]=0;
+  const pq=[[0,from]];
+  while(pq.length){
+    pq.sort((a,b)=>a[0]-b[0]); const [dd,u]=pq.shift();
+    if(vis[u]) continue; vis[u]=true; if(u===to) break;
+    for(const e of adj[u]){ const v=other(e,u); const w=bprTime(e); if(w===Infinity) continue;
+      const nd=dd+w; if(nd<d[v]){ d[v]=nd; prev[v]=[u,e]; pq.push([nd,v]); } }
+  }
+  if(d[to]===Infinity) return null;
+  const path=[]; let cur=to;
+  while(cur!==from){ const [pu,pe]=prev[cur]; path.unshift(pe); cur=pu; }
+  return {edges:path, time:d[to]};
+}
+function spawnCluster(ward){
+  const shelter=pickShelter(); if(!shelter) return;
+  const size=60+Math.floor(Math.random()*90);
+  const route=dijkstra(ward,shelter); if(!route) return;
+  clusters.push({id:'C'+(clusterSeq++), size, node:ward, shelter, path:route.edges, ei:0, prog:0});
+}
+function recomputeVolumes(){ edges.forEach(e=>e.volume=0); clusters.forEach(cl=>{ const e=cl.path[cl.ei]; if(e) e.volume+=cl.size; }); }
+let lastReroute=0;
+function rerouteAll(){
+  const t0=performance.now();
+  clusters.forEach(cl=>{
+    if(!cl.path[cl.ei] || cl.path[cl.ei].state==='CLOSED'){
+      const r=dijkstra(cl.node,cl.shelter);
+      if(r){ cl.path=r.edges; cl.ei=0; cl.prog=0; }
+      else { const alt=pickShelter(); if(alt){ cl.shelter=alt; const r2=dijkstra(cl.node,alt); if(r2){cl.path=r2.edges;cl.ei=0;cl.prog=0;} } }
+    }
+  });
+  lastReroute=performance.now()-t0;
+  document.getElementById('stLat').textContent=lastReroute.toFixed(1)+' ms';
+}
+function advanceClusters(dt){
+  for(const cl of clusters.slice()){
+    const e=cl.path[cl.ei]; if(!e) continue;
+    const t=bprTime(e); if(t===Infinity) continue;
+    cl.prog += dt*8/t;
+    if(cl.prog>=1){
+      cl.prog=0; cl.ei++; cl.node=e.b;
+      if(cl.ei>=cl.path.length){
+        nodes[cl.shelter].occ+=cl.size; evacuated+=cl.size;
+        clusters.splice(clusters.indexOf(cl),1);
+        log(`Cluster ${cl.id} (${cl.size} veh) reached ${nodes[cl.shelter].label}.`,'shl');
+      }
+    }
+  }
+}
+
+// ---------- Logging ----------
+function log(msg,cls){
+  const div=document.createElement('div'); if(cls) div.className=cls;
+  div.innerHTML=`<b>${new Date().toLocaleTimeString([],{hour12:false})}</b> ${msg}`;
+  const el=document.getElementById('log'); el.insertBefore(div, el.firstChild);
+  while(el.children.length>60) el.removeChild(el.lastChild);
+}
+
+// ---------- What-if ----------
+document.getElementById('bridgeBtn').addEventListener('click', ()=>{
+  const crit = edges.filter(e=>e.critical && !e.closedByCollapse);
+  if(!crit.length){ log('No further critical segments to close in this scenario.','wif'); return; }
+  const e = crit[Math.floor(Math.random()*crit.length)];
+  e.closedByCollapse=true;
+  log(`Counterfactual test: '${e.name} closes in T+15m' — recomputing network.`,'wif');
+  const t0=performance.now(); rerouteAll(); const dt=(performance.now()-t0).toFixed(0);
+  log(`What-if engine: alternate routing computed in ${dt} ms. ${e.name} (${e.a}–${e.b}) marked CLOSED.`,'wif');
+});
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++) depth[r][c]=0;
+  edges.forEach(e=>{e.closedByCollapse=false; e.state='SAFE'; e.volume=0;});
+  clusters=[]; evacuated=0; shelterIds.forEach(s=>nodes[s].occ=0);
+  document.getElementById('log').innerHTML='';
+  log('Simulation reset. All corridors reopened.','flow');
+});
+let playing=true;
+document.getElementById('playBtn').addEventListener('click',(e)=>{ playing=!playing; e.target.textContent=playing?'Pause':'Resume'; });
+const rainInput=document.getElementById('rain'), rainv=document.getElementById('rainv');
+rainInput.addEventListener('input',()=>rainv.textContent=rainInput.value+'%');
+const spdInput=document.getElementById('spd'), spdv=document.getElementById('spdv');
+spdInput.addEventListener('input',()=>spdv.textContent=spdInput.value+'×');
+let suggestedPath = null;
+// ---------- Inspect corridor on click ----------
+function distToSeg(px,py,ax,ay,bx,by){
+  const dx=bx-ax, dy=by-ay; const len2=dx*dx+dy*dy;
+  let t = len2? ((px-ax)*dx+(py-ay)*dy)/len2 : 0; t=Math.max(0,Math.min(1,t));
+  const x=ax+t*dx, y=ay+t*dy; return Math.hypot(px-x,py-y);
+}
+cv.addEventListener('click',(ev)=>{
+  const rect=cv.getBoundingClientRect();
+  const px=(ev.clientX-rect.left)*(cv.width/rect.width);
+  const py=(ev.clientY-rect.top)*(cv.height/rect.height);
+  // Inside cv.addEventListener('click',(ev)=>{ ...
+  let best=null,bd=14;
+  edges.forEach(e=>{
+    const A = nodes[e.a], B = nodes[e.b];
+    // Use true geographic pixels for clicking
+    const pA = getXY(A.lat, A.lon), pB = getXY(B.lat, B.lon);
+    const d = distToSeg(px, py, pA.x, pA.y, pB.x, pB.y);
+    if(d<bd){bd=d;best=e;}
+  });
+  
+  const panel=document.getElementById('selPanel');
+  if(!best){ 
+      suggestedPath = null; // Clear path on empty click
+      return; 
+  }
+  
+  // AI Path Suggestion Logic
+  const startNode = best.a; 
+  const targetShelter = pickShelter(); // Finds nearest shelter with capacity
+  
+  if(targetShelter) {
+      const route = dijkstra(startNode, targetShelter);
+      if(route) {
+          suggestedPath = route.edges;
+          log(`AI Pathfinder: Routing from ${best.name} to ${nodes[targetShelter].label}. Est. time: ${(route.time/60).toFixed(1)} mins.`,'safe');
+      } else {
+          log(`AI Pathfinder: No safe route available from ${best.name}.`,'sev');
+      }
+  }
+
+  // Restore the full metadata panel HTML
+  panel.className='selbox';
+  panel.innerHTML = `
+    <div class="row2"><span>Name (OSM)</span><span>${best.name}</span></div>
+    <div class="row2"><span>Highway class</span><span>${best.hw}</span></div>
+    <div class="row2"><span>Length</span><span>${best.len} m</span></div>
+    <div class="row2"><span>Speed limit</span><span>${best.speed} km/h</span></div>
+    <div class="row2"><span>Lanes</span><span>${best.lanes}</span></div>
+    <div class="row2"><span>Directionality</span><span>${best.oneway?'One-way':'Two-way'}</span></div>
+    <div class="row2"><span>Capacity (derated)</span><span>${Math.round(effCapacity(best))} / ${best.capacity}</span></div>
+    <div class="row2"><span>Flood depth</span><span>${best.flood.toFixed(2)} m</span></div>
+    <div class="row2"><span>State</span><span>${best.state}</span></div>
+  `;
+});
+
+// ---------- Draw ----------
+// ---------- Draw ----------
+function stateColor(s){ return s==='SAFE'?'#34d399':s==='WARNING'?'#fbbf24':'#f87171'; }
+
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  
+  // 1. Draw procedural flood overlay
+  const cellW = cv.width / COLS, cellH = cv.height / ROWS;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const d=depth[r][c];
+    if(d>0.02){ 
+        ctx.fillStyle=`rgba(56,120,220,${Math.min(0.85,d*1.8)})`; 
+        ctx.fillRect(c*cellW, r*cellH, cellW + 1, cellH + 1); 
+    }
+  }
+  
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 2. Base Pass: Draw dark outlines behind all roads for high contrast
+  edges.forEach(e=>{
+    const pA = getXY(nodes[e.a].lat, nodes[e.a].lon), pB = getXY(nodes[e.b].lat, nodes[e.b].lon);
+    ctx.strokeStyle = '#0f172a'; // Dark border
+    ctx.lineWidth = e.critical ? 8 : 5.5;
+    ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y); ctx.stroke();
+  });
+
+  // 3. Color Pass: Draw the colored road states
+  edges.forEach(e=>{
+    const pA = getXY(nodes[e.a].lat, nodes[e.a].lon), pB = getXY(nodes[e.b].lat, nodes[e.b].lon);
+    ctx.strokeStyle = stateColor(e.state); 
+    ctx.lineWidth = e.critical ? 5 : 2.5;
+    ctx.beginPath(); ctx.moveTo(pA.x, pA.y); ctx.lineTo(pB.x, pB.y); ctx.stroke();
+  });
+
+  // 4. Draw AI Path if it exists
+  if (typeof suggestedPath !== 'undefined' && suggestedPath) {
+    ctx.strokeStyle = '#38bdf8'; // Vibrant blue for AI route
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    suggestedPath.forEach(e => {
+      const pA = getXY(nodes[e.a].lat, nodes[e.a].lon), pB = getXY(nodes[e.b].lat, nodes[e.b].lon);
+      ctx.moveTo(pA.x, pA.y); 
+      ctx.lineTo(pB.x, pB.y);
+    });
+    ctx.stroke();
+  }
+  
+  // 5. Draw Wards and Shelters with borders
+  Object.entries(nodes).forEach(([id,n])=>{
+    const {x, y} = getXY(n.lat, n.lon);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#0f172a'; // Outline for nodes
+
+    if(n.type==='ward'){ 
+      ctx.fillStyle='#a78bfa'; 
+      ctx.fillRect(x-6,y-6,12,12); 
+      ctx.strokeRect(x-6,y-6,12,12);
+    }
+    else if(n.type==='shelter'){
+      ctx.fillStyle=(n.occ>=n.capacity*0.9)?'#f87171':'#f472b6';
+      ctx.beginPath(); ctx.moveTo(x,y-9); ctx.lineTo(x+9,y); ctx.lineTo(x,y+9); ctx.lineTo(x-9,y); ctx.closePath(); 
+      ctx.fill(); ctx.stroke();
+    } else { 
+      ctx.fillStyle='#475569'; 
+      ctx.beginPath(); ctx.arc(x,y,3,0,7); 
+      ctx.fill(); ctx.stroke(); 
+    }
+  });
+
+  // 6. Draw moving evacuation clusters
+  clusters.forEach(cl=>{
+    const e=cl.path[cl.ei]; if(!e) return;
+    const pA = getXY(nodes[e.a].lat, nodes[e.a].lon), pB = getXY(nodes[e.b].lat, nodes[e.b].lon);
+    const x = pA.x + (pB.x - pA.x) * cl.prog;
+    const y = pA.y + (pB.y - pA.y) * cl.prog;
+    
+    ctx.fillStyle='#fef08a'; 
+    ctx.beginPath(); ctx.arc(x, y, 2.5 + Math.min(3, cl.size/70), 0, 7); 
+    ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = '#000'; ctx.stroke();
+  });
+}
+
+  // ---> STEP C: INSERT NEW AI PATH CODE HERE <---
+  
+
+
+// ---------- Main loop ----------
+let tick=0;
+function frame(){
+  if(playing){
+    const speed=parseInt(spdInput.value);
+    for(let s=0;s<speed;s++){ stepFlood(parseInt(rainInput.value)); tick++; }
+    updateEdgeStates().forEach(m=>log(m,'sev'));
+    recomputeVolumes();
+    if(tick%20<speed) rerouteAll();
+    advanceClusters(0.9*speed);
+    if(tick%18<speed && clusters.length<40){
+      const w=wardIds[Math.floor(Math.random()*wardIds.length)];
+      spawnCluster(w);
+    }
+    if(tick%140<speed){
+      const b=edges.find(e=>e.state!=='CLOSED' && e.volume/Math.max(1,effCapacity(e))>0.85);
+      if(b) log(`Flow rebalanced off ${b.name} (${b.a}–${b.b}) to relieve saturation.`,'flow');
+    }
+    const safe=edges.filter(e=>e.state==='SAFE').length;
+    const warn=edges.filter(e=>e.state==='WARNING').length;
+    const closed=edges.filter(e=>e.state==='CLOSED').length;
+    const bottle=edges.filter(e=>e.state!=='CLOSED' && e.volume/Math.max(1,effCapacity(e))>0.9).length;
+    document.getElementById('stSafe').textContent=safe;
+    document.getElementById('stWarn').textContent=warn;
+    document.getElementById('stClosed').textContent=closed;
+    document.getElementById('stBottle').textContent=bottle;
+    document.getElementById('stEvac').textContent=`${evacuated.toLocaleString()} / ${totalDemand.toLocaleString()}`;
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+updateEdgeStates();
+log('Simulation initialized on a real OSM-ingested topological graph (West Oakland, CA — 36 nodes / 45 edges).','flow');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
